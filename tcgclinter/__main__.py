@@ -232,6 +232,22 @@ class Linter:
             self._warn(card, f"number {number} does not match sorting order {sorting_order}")
 
     @single_card_check
+    def _check_pokemon_name_vs_card_type(self, card):
+        name = card.data.get("name", "")
+        types = card.data.get("types", [])
+
+        if name.endswith(" ex") and "Pokémon ex" not in types:
+            self._warn(card, f"card should maybe have 'Pokémon ex' type (current: {types})")
+
+    @single_card_check
+    def _check_card_rule_vs_card_type(self, card):
+        has_rule = len(card.data.get("rules", [])) > 0
+        rule_types = ("Pokémon ex", "Supporter", "Stadium")
+        for t in rule_types:
+            if t in card.data.get("types", []) and not has_rule:
+                self._warn(card, f"{t} typed card has no rule text defined")
+
+    @single_card_check
     def _check_card_number_against_right_part(self, card):
         right_part = card.data.get("expansion", {}).get("cardNumberRightPart")
         if not right_part:
