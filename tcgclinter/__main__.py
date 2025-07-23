@@ -42,6 +42,9 @@ class Card:
                 name += f" ({xp['tcgRegion']} / {xp['name']})"
         return name
 
+    def __repr__(self):
+        return f"<Card: {self.path}>"
+
     def __hash__(self):
         return hash(self.path)
     def __eq__(self, other):
@@ -89,7 +92,7 @@ class CardSet:
 
 @dataclasses.dataclass(frozen=True)
 class Finding:
-    card: Card
+    context: str
     message: str
 
 
@@ -133,23 +136,23 @@ class Linter:
         if self.verbose:
             print(message)
 
-    def _warn(self, card, message):
-        finding = Finding(card=card, message=message)
+    def _warn(self, context, message):
+        finding = Finding(context=str(context), message=message)
         if self.verbose:
             self._print_warning(finding)
         self.warnings.append(finding)
 
-    def _err(self, card, message):
-        finding = Finding(card=card, message=message)
+    def _err(self, context, message):
+        finding = Finding(context=str(context), message=message)
         if self.verbose:
             self._print_error(finding)
         self.errors.append(finding)
 
     def _print_warning(self, finding):
-        print(f"Warning: ({finding.card}) {finding.message}")
+        print(f"Warning: ({finding.context}) {finding.message}")
 
     def _print_error(self, finding):
-        print(f"Error:   ({finding.card}) {finding.message}")
+        print(f"Error:   ({finding.context}) {finding.message}")
 
     def _collect_sources(self, sources, recursive):
         collected = set()
@@ -169,7 +172,17 @@ class Linter:
         for path in sources:
             with path.open() as fp:
                 try:
-                    data = json.load(fp)
+                    # To avoid issues with putting lists in sets. Could
+                    # probably go away once JSON schema checks are implemented,
+                    # in the meantime this prevents having to type check in
+                    # tons of extra places.
+                    def _list_children_to_tuple(obj):
+                        for k in obj:
+                            if isinstance(obj[k], list):
+                                obj[k] = tuple(obj[k])
+                        return obj
+
+                    data = json.load(fp, object_hook=_list_children_to_tuple)
                 except ValueError as e:
                     self._err(Card(path=path, data=None),
                               f"invalid JSON file: {e}")
@@ -194,6 +207,8 @@ class Linter:
     def _check_card_standard_attributes(self, card):
         if card.data.get("name") is None:
             self._err(card, "card has no name")
+        if card.data.get("numberSortingOrder") is None:
+            self._err(card, "card has no numberSortingOrder")
         if not card.data.get("variants", []):
             self._err(card, "card has no variants")
         if card.data.get("supertype") is None:
@@ -204,14 +219,39 @@ class Linter:
             self._err(card, "card has no format")
 
     @single_card_check
+    def _check_card_number_against_sort_order(self, card):
+        number = card.data.get("number")
+        if not number:
+            return
+
+        sorting_order = card.data.get("numberSortingOrder")
+        if not sorting_order:
+            return
+
+        if int(number.split("/")[0]) != sorting_order:
+            self._warn(card, f"number {number} does not match sorting order {sorting_order}")
+
+    @single_card_check
+    def _check_card_number_against_right_part(self, card):
+        right_part = card.data.get("expansion", {}).get("cardNumberRightPart")
+        if not right_part:
+            return
+
+        number = card.data.get("number")
+        if not number:
+            self._err(card, "card in numbered set has no number")
+            return
+
+        if not number.endswith(f"/{right_part}"):
+            self._err(card, f"card number {number} does not end with /{right_part}")
+
+    @single_card_check
     def _check_pokemon_card_standard_attributes(self, card):
         if card.data.get("supertype") != "Pokémon":
             return
 
         if card.data.get("pokemonStage") is None:
             self._err(card, "Pokémon card has no pokemonStage")
-        if card.data.get("evolvesInto"):
-            self._err(card, "Pokémon card must not have evolvesInto")
         if card.data.get("hitPoints") is None:
             self._err(card, "Pokémon card has no hitPoints")
         if not card.data.get("energyTypes"):
@@ -220,8 +260,13 @@ class Linter:
             self._err(card, "Pokémon card has no attacks")
         if card.data.get("retreatCost") is None:
             self._err(card, "Pokémon card has no retreatCost")
+        if not card.data.get("pokedexNumbers"):
+            self._err(card, "Pokémon card has no pokedexNumbers")
         if not card.data.get("illustrators"):
             self._err(card, "Pokémon card has no illustrators")
+
+        if card.data.get("evolvesInto"):
+            self._err(card, "Pokémon card must not have evolvesInto")
         if card.data.get("description"):
             self._err(card, "Pokémon card must not have description")
 
@@ -235,11 +280,36 @@ class Linter:
         elif not is_evolved and has_evolves_from:
             self._err(card, "Basic Pokémon has evolvesFrom")
 
-    @single_card_check
-    def _check_pokemon_has_pokedex_number(self, card):
-        if (card.data.get("supertype") == "Pokémon" and
-            len(card.data.get("pokedexNumbers", [])) == 0):
-            self._err(card, "Pokémon card is missing Pokédex Number")
+    @set_consistency_check
+    def _check_set_attributes_identical(self, card_set):
+        attrs = ("id", "name", "series", "tcgRegion", "code", "releaseDate", "cardNumberRightPart")
+        values = {a: {} for a in attrs}
+        for card in card_set.cards:
+            xp = card.data.get("expansion", {})
+            for a in attrs:
+                values[a].setdefault(xp.get(a), set()).add(card)
+        for a in attrs:
+            if len(values[a]) > 1:
+                self._warn(card_set, f"Same set cards found with different expansion {a}: {values[a]}")
+
+    @set_consistency_check
+    def _check_same_pokemon_different_attributes(self, card_set):
+        per_name = {}
+        for card in card_set.cards:
+            if (card.data.get("supertype") != "Pokémon"
+                    or not card.data.get("name")):
+                continue
+            per_name.setdefault(card.data.get("name"), set()).add(card)
+
+        attrs = ("stages", "evolvesFrom", "pokedexNumbers")
+        for name, cards in per_name.items():
+            values = {a: {} for a in attrs}
+            for card in cards:
+                for a in attrs:
+                    values[a].setdefault(card.data.get(a), set()).add(card)
+            for a in attrs:
+                if len(values[a]) > 1:
+                    self._warn(card_set, f"Pokémon {name} found with different {a}: {values[a]}")
 
 
 def main():
