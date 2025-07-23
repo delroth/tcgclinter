@@ -297,6 +297,22 @@ class Linter:
             self._err(card, "Basic Pokémon has evolvesFrom")
 
     @single_card_check
+    def _check_energy_types(self, card):
+        _VALID = {'Colorless', 'Darkness', 'Fighting', 'Grass', 'Lightning', 'Metal',
+                  'Dragon', 'Psychic', 'Fire', 'Water', 'Fairy'}
+        def _check(context, et):
+            if et not in _VALID:
+                self._err(card, f"wrong energy type {et} in {context}")
+
+        [_check("Pokémon energyTypes", et) for et in card.data.get("energyTypes", [])]
+        [_check("Pokémon weakness", wk.get("type")) for wk in card.data.get("weaknesses", [])]
+        [_check("Pokémon resistances", res.get("type")) for res in card.data.get("resistances", [])]
+
+        for atk in card.data.get("attacks", []):
+            [_check(f"attack {atk.get('name', '!UNKNOWN!')}", er.get("type"))
+             for er in atk.get("energies", [])]
+
+    @single_card_check
     def _check_sorting_orders(self, card):
         def _check(context, l):
             orders = [e.get("sortingOrder") for e in l]
