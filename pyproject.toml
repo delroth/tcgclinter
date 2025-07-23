@@ -1,0 +1,24 @@
+[project]
+name = "tcgc-linter"
+version = "0.1.0"
+description = "Linter for tcgcollector.com JSON card files."
+authors = [
+    {name = "Pierre Bourdon",email = "delroth@gmail.com"}
+]
+license = {text = "EUPL-1.2"}
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+]
+
+[project.scripts]
+tcgclinter = "tcgclinter.__main__:main"
+
+[tool.poetry]
+packages = [
+  { include = "tcgclinter" },
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
