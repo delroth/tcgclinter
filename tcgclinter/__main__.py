@@ -350,6 +350,18 @@ class Linter:
                 if len(values[a]) > 1:
                     self._warn(card_set, f"Pokémon {name} found with different {a}: {values[a]}")
 
+    @set_consistency_check
+    def _check_number_sorting_order_uniqueness(self, card_set):
+        per_sorting_order = {}
+        for card in card_set.cards:
+            n = card.data.get("numberSortingOrder")
+            if n is None:
+                continue
+            per_sorting_order.setdefault(n, set()).add(card)
+        for n, cards in sorted(per_sorting_order.items()):
+            if len(cards) > 1:
+                self._err(card_set, f"two cards share sorting order {n}: {cards}")
+
 
 def main():
     parser = argparse.ArgumentParser(prog="tcgclinter")
