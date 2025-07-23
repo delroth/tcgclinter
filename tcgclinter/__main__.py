@@ -296,6 +296,29 @@ class Linter:
         elif not is_evolved and has_evolves_from:
             self._err(card, "Basic Pokémon has evolvesFrom")
 
+    @single_card_check
+    def _check_sorting_orders(self, card):
+        def _check(context, l):
+            orders = [e.get("sortingOrder") for e in l]
+            if all(e is None for e in orders):
+                return
+            normalized = list(range(1, len(orders) + 1))
+            if orders != normalized:
+                self._warn(card, f"wrong {context} sorting order: {orders}")
+
+        attrs = ("variants", "rules", "effects", "attacks", "weaknesses", "resistances")
+        for a in attrs:
+            v = card.data.get(a)
+            if not v or not isinstance(v, tuple):
+                continue
+            _check(a, v)
+
+        for attack in card.data.get("attacks", []):
+            v = card.data.get("energies")
+            if not v or not isinstance(v, tuple):
+                continue
+            _check(f"attack {attack} energies", v)
+
     @set_consistency_check
     def _check_set_attributes_identical(self, card_set):
         attrs = ("id", "name", "series", "tcgRegion", "code", "releaseDate", "cardNumberRightPart")
