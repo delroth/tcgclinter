@@ -7,6 +7,7 @@ SPDX-FileCopyrightText: 2025 Pierre Bourdon <delroth@gmail.com>
 
 import argparse
 import dataclasses
+import datetime
 import functools
 import json
 import os
@@ -334,6 +335,16 @@ class Linter:
             if not v or not isinstance(v, tuple):
                 continue
             _check(f"attack {attack} energies", v)
+
+    @single_card_check
+    def _check_set_timestamp(self, card):
+        ts = card.data.get("expansion", {}).get("releaseDate")
+        if not ts:
+            return
+        try:
+            datetime.datetime.fromisoformat(ts)
+        except ValueError:
+            self._err(card, f"invalid set release date: {ts}")
 
     @set_consistency_check
     def _check_set_attributes_identical(self, card_set):
