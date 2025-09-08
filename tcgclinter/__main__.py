@@ -236,9 +236,13 @@ class Linter:
     def _check_pokemon_name_vs_card_type(self, card):
         name = card.data.get("name", "")
         types = card.data.get("types", [])
+        is_pokemon = card.data.get("pokemonStage") is not None
 
-        if name.endswith(" ex") and "Pokémon ex" not in types:
+        if is_pokemon and name.endswith(" ex") and all("Pokémon ex" not in t for t in types):
             self._warn(card, f"card should maybe have 'Pokémon ex' type (current: {types})")
+
+        if is_pokemon and name.startswith("Mega ") and all("Mega" not in t for t in types):
+            self._warn(card, f"card should maybe have 'Mega Pokémon' type (current: {types})")
 
     @single_card_check
     def _check_card_rule_vs_card_type(self, card):
