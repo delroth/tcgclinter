@@ -290,7 +290,7 @@ class Linter:
     @single_card_check
     def _check_nonbasic_has_evolvesfrom_and_vice_versa(self, card):
         # Presence of a pokemonStage is checked elsewhere.
-        is_evolved = (card.data.get("pokemonStage", "Basic") != "Basic")
+        is_evolved = ((card.data.get("pokemonStage") or "Basic") != "Basic")
         has_evolves_from = (card.data.get("evolvesFrom") is not None)
         if is_evolved and not has_evolves_from:
             self._err(card, "Evolution Pokémon is missing evolvesFrom")
